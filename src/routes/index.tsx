@@ -20,6 +20,8 @@ import {
   Target,
   ShieldAlert,
   Clock,
+  Signature,
+  Heart,
 } from "lucide-react";
 
 import { getGoldData } from "@/lib/gold.functions";
@@ -350,8 +352,29 @@ function GoldEngine() {
                 {new Date(dataUpdatedAt).toLocaleTimeString("ar-EG")} — المصدر: {data?.symbol}
               </p>
             </Panel>
-          </>
+</>
         )}
+
+        {/* توقيع المطور */}
+        <footer className="signature-card relative overflow-hidden rounded-2xl px-6 py-6 text-center">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary to-transparent"
+          />
+          <div className="flex flex-col items-center justify-center gap-1">
+            <Signature size={18} className="text-primary" />
+            <p className="text-[10px] font-bold uppercase tracking-[0.5em] text-muted-foreground">Developer</p>
+            <p className="neon-text font-signature text-4xl font-bold md:text-5xl">Marwan Negm</p>
+            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span className="h-px w-10 bg-gradient-to-r from-transparent to-primary/50" />
+              <span className="flex items-center gap-1.5">
+                <Heart size={11} className="fill-destructive text-destructive" />
+                صُنع بشغف لعشّاق الذهب
+              </span>
+              <span className="h-px w-10 bg-gradient-to-l from-transparent to-primary/50" />
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );
