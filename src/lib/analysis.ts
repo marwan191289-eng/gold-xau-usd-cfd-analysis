@@ -325,7 +325,7 @@ export type Signal = {
   notes: string[];
 };
 
-const WEIGHTS: Record<string, number> = { "5m": 0.2, "15m": 0.3, "1h": 0.3, "4h": 0.2 };
+const WEIGHTS: Record<string, number> = { "5m": 0.2, "15m": 0.3, "1h": 0.3, "1d": 0.2 };
 
 export function buildSignal(
   tfs: TFAnalysis[],

@@ -83,7 +83,7 @@ function GoldEngine() {
   const engine = useMemo(() => {
     if (!data) return null;
     const d = data.data as Record<string, Candle[]>;
-    const tfs = ["5m", "15m", "1h", "4h"].filter((k) => (d[k]?.length ?? 0) > 60).map((k) => analyzeTF(k, d[k]!));
+    const tfs = ["5m", "15m", "1h", "1d"].filter((k) => (d[k]?.length ?? 0) > 60).map((k) => analyzeTF(k, d[k]!));
     const exec = d["5m"]!;
     const execATRArr = atr(exec, 14);
     const execATR = (execATRArr[execATRArr.length - 1] as number) || data.price * 0.002;
@@ -207,7 +207,8 @@ function GoldEngine() {
                     </defs>
                     <XAxis dataKey="time" tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }} minTickGap={40} />
                     <YAxis
-                      domain={["dataMin - 2", "dataMax + 2"]}
+                      domain={[(d: number) => d - 2, (d: number) => d + 2]}
+                      tickFormatter={(v: number) => v.toFixed(0)}
                       tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
                       width={60}
                     />

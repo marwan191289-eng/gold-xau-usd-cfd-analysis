@@ -7,7 +7,7 @@ const TFS: { tf: string; interval: string; range: string }[] = [
   { tf: "5m", interval: "5m", range: "5d" },
   { tf: "15m", interval: "15m", range: "1mo" },
   { tf: "1h", interval: "60m", range: "3mo" },
-  { tf: "4h", interval: "1d", range: "1y" },
+  { tf: "1d", interval: "1d", range: "1y" },
 ];
 
 async function fetchTF(interval: string, range: string): Promise<Candle[]> {
