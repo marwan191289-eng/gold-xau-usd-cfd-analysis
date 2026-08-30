@@ -34,7 +34,7 @@ export function rsi(v: number[], p = 14): (number | null)[] {
   let g = 0;
   let l = 0;
   for (let i = 1; i < v.length; i++) {
-    const d = v[i] - v[i - 1];
+    const d = v[i]! - v[i - 1]!;
     const up = Math.max(d, 0);
     const dn = Math.max(-d, 0);
     if (i <= p) {
@@ -64,7 +64,7 @@ export function macd(v: number[], fast = 12, slow = 26, signal = 9) {
 
 export function atr(c: Candle[], p = 14): (number | null)[] {
   const tr = c.map((k, i) =>
-    i === 0 ? k.h - k.l : Math.max(k.h - k.l, Math.abs(k.h - c[i - 1].c), Math.abs(k.l - c[i - 1].c)),
+    i === 0 ? k.h - k.l : Math.max(k.h - k.l, Math.abs(k.h - c[i - 1]!.c), Math.abs(k.l - c[i - 1]!.c)),
   );
   return ema(tr, p);
 }
@@ -86,7 +86,7 @@ export function stochastic(c: Candle[], p = 14, sm = 3) {
     const w = c.slice(i + 1 - p, i + 1);
     const hh = Math.max(...w.map((x) => x.h));
     const ll = Math.min(...w.map((x) => x.l));
-    return hh === ll ? 50 : ((c[i].c - ll) / (hh - ll)) * 100;
+    return hh === ll ? 50 : ((c[i]!.c - ll) / (hh - ll)) * 100;
   });
   const valid = k.filter((x): x is number => x != null);
   const d = sma(valid, sm);
@@ -98,11 +98,11 @@ export function adx(c: Candle[], p = 14): (number | null)[] {
   const minus: number[] = [0];
   const tr: number[] = [c[0].h - c[0].l];
   for (let i = 1; i < c.length; i++) {
-    const up = c[i].h - c[i - 1].h;
-    const dn = c[i - 1].l - c[i].l;
+    const up = c[i]!.h - c[i - 1]!.h;
+    const dn = c[i - 1]!.l - c[i]!.l;
     plus.push(up > dn && up > 0 ? up : 0);
     minus.push(dn > up && dn > 0 ? dn : 0);
-    tr.push(Math.max(c[i].h - c[i].l, Math.abs(c[i].h - c[i - 1].c), Math.abs(c[i].l - c[i - 1].c)));
+    tr.push(Math.max(c[i]!.h - c[i]!.l, Math.abs(c[i]!.h - c[i - 1]!.c), Math.abs(c[i]!.l - c[i - 1]!.c)));
   }
   const atrS = ema(tr, p);
   const pS = ema(plus, p);
@@ -136,10 +136,10 @@ export function levels(c: Candle[], atrVal: number) {
   const L = 3;
   for (let i = L; i < c.length - L; i++) {
     const w = c.slice(i - L, i + L + 1);
-    if (c[i].h === Math.max(...w.map((x) => x.h))) piv.push({ price: c[i].h, type: "resistance", idx: i });
-    if (c[i].l === Math.min(...w.map((x) => x.l))) piv.push({ price: c[i].l, type: "support", idx: i });
+    if (c[i]!.h === Math.max(...w.map((x) => x.h))) piv.push({ price: c[i]!.h, type: "resistance", idx: i });
+    if (c[i]!.l === Math.min(...w.map((x) => x.l))) piv.push({ price: c[i]!.l, type: "support", idx: i });
   }
-  const tol = Math.max(atrVal * 0.6, c[c.length - 1].c * 0.0004);
+  const tol = Math.max(atrVal * 0.6, c[c.length - 1]!.c * 0.0004);
   const clusters: { price: number; touches: number; type: "support" | "resistance"; last: number }[] = [];
   for (const p of piv) {
     const f = clusters.find((x) => Math.abs(x.price - p.price) <= tol);
@@ -149,7 +149,7 @@ export function levels(c: Candle[], atrVal: number) {
       f.last = Math.max(f.last, p.idx);
     } else clusters.push({ price: p.price, touches: 1, type: p.type, last: p.idx });
   }
-  const price = c[c.length - 1].c;
+  const price = c[c.length - 1]!.c;
   const score = (x: (typeof clusters)[number]) =>
     x.touches * 2 + (x.last / c.length) * 3 - Math.abs(x.price - price) / tol;
   const supports = clusters
@@ -171,7 +171,7 @@ export function pivots(c: Candle[], bars: number) {
   if (!w.length) return null;
   const h = Math.max(...w.map((x) => x.h));
   const l = Math.min(...w.map((x) => x.l));
-  const cl = w[w.length - 1].c;
+  const cl = w[w.length - 1]!.c;
   const p = (h + l + cl) / 3;
   return {
     p,
@@ -224,7 +224,7 @@ export function analyzeTF(tf: string, c: Candle[]): TFAnalysis {
   const st = stochastic(c);
   const bb = bollinger(close);
   const bbw = (bb[bb.length - 1]?.width ?? 0) as number;
-  const price = close[close.length - 1];
+  const price = close[close.length - 1]!;
   const vw = vwap(c);
 
   let bias = 0;
@@ -384,7 +384,7 @@ export function buildSignal(
   }
 
   const risk = Math.abs(price - stop) || execATR;
-  const rr = Math.abs(targets[1] - price) / risk;
+  const rr = Math.abs(targets[1]! - price) / risk;
   notes.push(`تقلب ATR على فريم التنفيذ: ${execATR.toFixed(2)}$`);
 
   return {

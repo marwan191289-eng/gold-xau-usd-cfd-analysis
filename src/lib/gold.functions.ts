@@ -38,9 +38,9 @@ export const getGoldData = createServerFn({ method: "GET" }).handler(async () =>
   const results = await Promise.all(TFS.map((t) => fetchTF(t.interval, t.range)));
   const data: Record<string, Candle[]> = {};
   TFS.forEach((t, i) => {
-    data[t.tf] = results[i];
+    data[t.tf] = results[i]!;
   });
-  const exec = data["5m"];
-  const price = exec[exec.length - 1].c;
+  const exec = data["5m"]!;
+  const price = exec[exec.length - 1]!.c;
   return { data, price, fetchedAt: Date.now(), symbol: "XAU/USD (COMEX GC)" };
 });
