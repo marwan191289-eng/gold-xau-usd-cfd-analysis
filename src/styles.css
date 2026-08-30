@@ -48,7 +48,8 @@
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);
-  --font-display: var(--font-display);
+--font-display: var(--font-display);
+  --font-signature: var(--font-signature);
   --color-ring-offset-background: var(--background);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -92,7 +93,8 @@
   --gold-gradient: linear-gradient(135deg, oklch(0.86 0.14 90) 0%, oklch(0.72 0.16 70) 45%, oklch(0.9 0.1 95) 100%);
   --surface-gradient: linear-gradient(160deg, oklch(0.23 0.02 65) 0%, oklch(0.18 0.015 60) 100%);
   --shadow-gold: 0 10px 40px -12px oklch(0.79 0.145 84 / 0.45);
-  --font-display: "Cairo", "Tajawal", system-ui, sans-serif;
+--font-display: "Cairo", "Tajawal", system-ui, sans-serif;
+  --font-signature: "Great Vibes", "Cairo", cursive;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -176,4 +178,37 @@
 
 @utility glow-gold {
   box-shadow: var(--shadow-gold);
+}
+
+@utility neon-text {
+  color: oklch(0.93 0.09 90);
+  text-shadow:
+    0 0 6px oklch(0.88 0.16 85 / 0.95),
+    0 0 16px oklch(0.84 0.15 84 / 0.65),
+    0 0 36px oklch(0.79 0.145 84 / 0.45);
+}
+
+@utility signature-card {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 0%, oklch(0.85 0.15 84 / 0.14), transparent 70%),
+    linear-gradient(165deg, oklch(0.21 0.02 62 / 0.92) 0%, oklch(0.165 0.016 60 / 0.96) 100%);
+  border: 1px solid oklch(0.79 0.145 84 / 0.32);
+  animation: neon-breathe 3.4s ease-in-out infinite;
+}
+
+@keyframes neon-breathe {
+  0%,
+  100% {
+    border-color: oklch(0.79 0.145 84 / 0.32);
+    box-shadow:
+      0 0 18px oklch(0.79 0.145 84 / 0.16),
+      inset 0 0 20px oklch(0.79 0.145 84 / 0.05);
+  }
+  50% {
+    border-color: oklch(0.88 0.15 86 / 0.65);
+    box-shadow:
+      0 0 36px oklch(0.85 0.15 84 / 0.38),
+      0 0 72px oklch(0.79 0.145 84 / 0.18),
+      inset 0 0 32px oklch(0.85 0.15 84 / 0.1);
+  }
 }
