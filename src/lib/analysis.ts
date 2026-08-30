@@ -96,7 +96,7 @@ export function stochastic(c: Candle[], p = 14, sm = 3) {
 export function adx(c: Candle[], p = 14): (number | null)[] {
   const plus: number[] = [0];
   const minus: number[] = [0];
-  const tr: number[] = [c[0].h - c[0].l];
+  const tr: number[] = [c[0]!.h - c[0]!.l];
   for (let i = 1; i < c.length; i++) {
     const up = c[i]!.h - c[i - 1]!.h;
     const dn = c[i - 1]!.l - c[i]!.l;
