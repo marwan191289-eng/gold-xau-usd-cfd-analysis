@@ -412,3 +412,131 @@ export function forecast(price: number, execATR: number, score: number) {
   };
   return [mk(1), mk(4), mk(8), mk(24)];
 }
+
+/* ---------- سلاسل المؤشرات للرسم البياني متعدد الطبقات ---------- */
+
+export type SeriesPoint = {
+  t: number;
+  time: string;
+  price: number;
+  ema20: number | null;
+  ema50: number | null;
+  ema200: number | null;
+  bbUp: number | null;
+  bbLow: number | null;
+  bbMid: number | null;
+  rsi: number | null;
+  macd: number | null;
+  macdSignal: number | null;
+  hist: number | null;
+  adx: number | null;
+  atr: number | null;
+  vwap: number | null;
+};
+
+export function buildSeries(c: Candle[], take = 140): SeriesPoint[] {
+  const close = c.map((x) => x.c);
+  const e20 = ema(close, 20);
+  const e50 = ema(close, 50);
+  const e200 = ema(close, Math.min(200, Math.max(20, Math.floor(close.length / 2))));
+  const bb = bollinger(close, 20, 2);
+  const r = rsi(close, 14);
+  const m = macd(close);
+  const a = atr(c, 14);
+  const ad = adx(c, 14);
+
+  // VWAP تراكمي متدحرج
+  const vw: (number | null)[] = [];
+  let pv = 0;
+  let vv = 0;
+  c.forEach((k) => {
+    const tp = (k.h + k.l + k.c) / 3;
+    const vol = k.v || 1;
+    pv += tp * vol;
+    vv += vol;
+    vw.push(vv ? pv / vv : null);
+  });
+
+  const start = Math.max(0, c.length - take);
+  const out: SeriesPoint[] = [];
+  for (let i = start; i < c.length; i++) {
+    const k = c[i]!;
+    out.push({
+      t: k.t,
+      time: new Date(k.t).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }),
+      price: k.c,
+      ema20: e20[i] ?? null,
+      ema50: e50[i] ?? null,
+      ema200: e200[i] ?? null,
+      bbUp: bb[i]?.up ?? null,
+      bbLow: bb[i]?.low ?? null,
+      bbMid: bb[i]?.mid ?? null,
+      rsi: r[i] ?? null,
+      macd: m.line[i] ?? null,
+      macdSignal: m.signal[i] ?? null,
+      hist: m.hist[i] ?? null,
+      adx: ad[i] ?? null,
+      atr: a[i] ?? null,
+      vwap: vw[i] ?? null,
+    });
+  }
+  return out;
+}
+
+/* ---------- الاختيار التلقائي لأفضل فريم تنفيذ ---------- */
+
+export type TFPick = {
+  tf: string;
+  score: number;
+  reason: string;
+  ranked: { tf: string; score: number }[];
+  regime: "زخم اتجاهي" | "تذبذب عرضي" | "تقلب عالي" | "هدوء";
+};
+
+/**
+ * يختار فريم التنفيذ الأنسب لحالة السوق الحالية:
+ * وضوح الاتجاه (ADX) + قوة الانحياز + توافق باقي الفريمات + جودة التقلب.
+ */
+export function pickTimeframe(tfs: TFAnalysis[]): TFPick {
+  const consensus = tfs.reduce((a, t) => a + t.bias, 0) / (tfs.length || 1);
+  const ranked = tfs
+    .map((t) => {
+      const adxScore = Math.min(t.adx, 45) * 1.1; // وضوح الاتجاه
+      const biasScore = Math.min(Math.abs(t.bias), 100) * 0.45;
+      const align = Math.sign(t.bias) === Math.sign(consensus) ? 14 : -10;
+      const volPct = (t.atr / t.price) * 100;
+      // نفضل تقلبًا كافيًا للربح دون فوضى
+      const volScore = volPct < 0.05 ? -12 : volPct > 1.2 ? -10 : 12;
+      const squeeze = t.bbWidth < 0.004 ? -8 : 0; // انضغاط = إشارات ضعيفة
+      const speed = t.tf === "5m" ? 8 : t.tf === "15m" ? 10 : t.tf === "1h" ? 6 : -4; // ملاءمة المدى القصير
+      return { tf: t.tf, score: Math.round(adxScore + biasScore + align + volScore + squeeze + speed) };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const bestTf = ranked[0]?.tf ?? tfs[0]?.tf ?? "15m";
+  const best = tfs.find((t) => t.tf === bestTf)!;
+  const volPct = (best.atr / best.price) * 100;
+  const regime: TFPick["regime"] =
+    best.adx >= 25 && Math.abs(best.bias) > 25
+      ? "زخم اتجاهي"
+      : volPct > 0.9
+        ? "تقلب عالي"
+        : best.adx < 18
+          ? "تذبذب عرضي"
+          : "هدوء";
+
+  const reason =
+    `تم اختيار فريم ${bestTf} تلقائيًا: ADX ${best.adx.toFixed(1)}، انحياز ${best.bias}، ` +
+    `تقلب ${volPct.toFixed(2)}٪ من السعر، والحالة السوقية: ${regime}.`;
+
+  return { tf: bestTf, score: ranked[0]?.score ?? 0, reason, ranked, regime };
+}
+
+/* ---------- إدارة المخاطر ---------- */
+
+export function positionSize(balance: number, riskPct: number, entry: number, stop: number) {
+  const riskAmount = (balance * riskPct) / 100;
+  const perUnit = Math.abs(entry - stop);
+  const units = perUnit > 0 ? riskAmount / perUnit : 0; // أونصات
+  return { riskAmount, perUnit, units, lots: units / 100 };
+}
