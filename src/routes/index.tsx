@@ -1,16 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo } from "react";
-import {
-  Area,
-  AreaChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip as RTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -22,11 +14,28 @@ import {
   Clock,
   Signature,
   Heart,
+  Copy,
+  Settings as SettingsIcon,
+  Wand2,
+  Bell,
 } from "lucide-react";
 
 import { getGoldData } from "@/lib/gold.functions";
-import { analyzeTF, atr, buildSignal, forecast, levels, pivots } from "@/lib/analysis";
+import {
+  analyzeTF,
+  atr,
+  buildSeries,
+  buildSignal,
+  forecast,
+  levels,
+  pickTimeframe,
+  pivots,
+  positionSize,
+} from "@/lib/analysis";
 import type { Candle } from "@/lib/analysis";
+import { MarketChart } from "@/components/MarketChart";
+import { pushAlert, useSettings } from "@/lib/settings";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
