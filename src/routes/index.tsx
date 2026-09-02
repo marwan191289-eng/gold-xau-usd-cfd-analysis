@@ -182,7 +182,14 @@ function GoldEngine() {
                 </div>
               </div>
             )}
+            <Link
+              to="/settings"
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-bold text-foreground transition hover:text-primary"
+            >
+              <SettingsIcon size={16} /> الإعدادات
+            </Link>
             <button
+
               onClick={() => refetch()}
               className="glow-gold inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:opacity-90"
             >
