@@ -237,8 +237,34 @@ function GoldEngine() {
                     </div>
                   ))}
                   <div className="col-span-2 rounded-lg border border-border bg-card px-3 py-2 sm:col-span-3">
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Clock size={12} /> الأفق الزمني: {engine.sig.horizon}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <Clock size={12} /> الأفق الزمني: {engine.sig.horizon}
+                      </div>
+                      <button
+                        onClick={copySignal}
+                        className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-primary/20"
+                      >
+                        <Copy size={13} /> نسخ الإشارة لحساب التداول
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">فريم التنفيذ: </span>
+                        <b className="text-primary">{engine.execTf}</b>
+                      </div>
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">مخاطرة: </span>
+                        <b>{settings.riskPercent}٪</b>
+                      </div>
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">المبلغ المخاطر: </span>
+                        <b>${f2(engine.size.riskAmount)}</b>
+                      </div>
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">الحجم: </span>
+                        <b>{engine.size.lots.toFixed(2)} لوت</b>
+                      </div>
                     </div>
                     <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                       {engine.sig.notes.map((n) => (
@@ -246,6 +272,7 @@ function GoldEngine() {
                       ))}
                     </ul>
                   </div>
+
                 </div>
               </div>
             </Panel>
