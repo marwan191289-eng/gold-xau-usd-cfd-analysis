@@ -1,16 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { useMemo } from "react";
-import {
-  Area,
-  AreaChart,
-  ReferenceLine,
-  ResponsiveContainer,
-  Tooltip as RTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { useEffect, useMemo, useRef } from "react";
+import { toast } from "sonner";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -22,11 +14,28 @@ import {
   Clock,
   Signature,
   Heart,
+  Copy,
+  Settings as SettingsIcon,
+  Wand2,
+  Bell,
 } from "lucide-react";
 
 import { getGoldData } from "@/lib/gold.functions";
-import { analyzeTF, atr, buildSignal, forecast, levels, pivots } from "@/lib/analysis";
+import {
+  analyzeTF,
+  atr,
+  buildSeries,
+  buildSignal,
+  forecast,
+  levels,
+  pickTimeframe,
+  pivots,
+  positionSize,
+} from "@/lib/analysis";
 import type { Candle } from "@/lib/analysis";
+import { MarketChart } from "@/components/MarketChart";
+import { pushAlert, useSettings } from "@/lib/settings";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -75,6 +84,7 @@ function Panel({
 
 function GoldEngine() {
   const fetchGold = useServerFn(getGoldData);
+  const { settings } = useSettings();
   const { data, isLoading, isFetching, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["gold"],
     queryFn: () => fetchGold(),
@@ -86,7 +96,10 @@ function GoldEngine() {
     if (!data) return null;
     const d = data.data as Record<string, Candle[]>;
     const tfs = ["5m", "15m", "1h", "1d"].filter((k) => (d[k]?.length ?? 0) > 60).map((k) => analyzeTF(k, d[k]!));
-    const exec = d["5m"]!;
+    const pick = pickTimeframe(tfs);
+    const execTf = settings.autoTimeframe ? pick.tf : "5m";
+    const exec = d[execTf] ?? d["5m"]!;
+    const execAnalysis = tfs.find((t) => t.tf === execTf) ?? tfs[0]!;
     const execATRArr = atr(exec, 14);
     const execATR = (execATRArr[execATRArr.length - 1] as number) || data.price * 0.002;
     const price = data.price;
@@ -95,13 +108,54 @@ function GoldEngine() {
     const score = tfs.reduce((a, t) => a + t.bias, 0) / (tfs.length || 1);
     const sig = buildSignal(tfs, lv, execATR, price);
     const fc = forecast(price, execATR, score);
-    const chart = exec.slice(-120).map((c) => ({
-      time: new Date(c.t).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }),
-      price: c.c,
-    }));
-    const change = ((price - exec[Math.max(0, exec.length - 78)]!.c) / price) * 100;
-    return { tfs, execATR, price, lv, piv, sig, fc, chart, score, change };
-  }, [data]);
+    const series = buildSeries(exec, 140);
+    const size = positionSize(settings.balance, settings.riskPercent, sig.entry, sig.stop);
+    const m5 = d["5m"]!;
+    const change = ((price - m5[Math.max(0, m5.length - 78)]!.c) / price) * 100;
+    return { tfs, execATR, price, lv, piv, sig, fc, score, change, pick, execTf, execAnalysis, series, size };
+  }, [data, settings.autoTimeframe, settings.balance, settings.riskPercent]);
+
+  /* تنبيهات درجة الثقة */
+  const prevRef = useRef<{ conf: number; action: string } | null>(null);
+  useEffect(() => {
+    if (!engine || !settings.alertsEnabled) return;
+    const cur = { conf: engine.sig.confidence, action: engine.sig.action };
+    const prev = prevRef.current;
+    prevRef.current = cur;
+    if (!prev) return;
+    const fire = (kind: "ارتفاع الثقة" | "انخفاض الثقة" | "تغير الإشارة", message: string) => {
+      pushAlert({ id: `${Date.now()}`, at: Date.now(), kind, message, confidence: cur.conf });
+      toast(kind, { description: message });
+    };
+    if (prev.action !== cur.action) fire("تغير الإشارة", `تحولت الإشارة من ${prev.action} إلى ${cur.action}`);
+    if (prev.conf < settings.riseThreshold && cur.conf >= settings.riseThreshold)
+      fire("ارتفاع الثقة", `ارتفعت درجة الثقة إلى ${cur.conf}% (${cur.action})`);
+    if (prev.conf > settings.dropThreshold && cur.conf <= settings.dropThreshold)
+      fire("انخفاض الثقة", `انخفضت درجة الثقة إلى ${cur.conf}%`);
+  }, [engine, settings.alertsEnabled, settings.riseThreshold, settings.dropThreshold]);
+
+  const copySignal = async () => {
+    if (!engine) return;
+    const s = engine.sig;
+    const text = [
+      `XAU/USD — ${s.action}`,
+      `الفريم: ${engine.execTf} (${settings.autoTimeframe ? "تلقائي" : "يدوي"})`,
+      `الوقت: ${new Date().toLocaleString("ar-EG")}`,
+      `الدخول: ${s.entry.toFixed(2)}`,
+      `وقف الخسارة: ${s.stop.toFixed(2)}`,
+      `الأهداف: ${s.targets.map((t) => t.toFixed(2)).join(" / ")}`,
+      `العائد/المخاطرة: 1:${s.rr.toFixed(2)}`,
+      `الثقة: ${s.confidence}%`,
+      `حجم الصفقة المقترح: ${engine.size.lots.toFixed(2)} لوت (مخاطرة ${settings.riskPercent}٪)`,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("تم نسخ الإشارة", { description: "الصق الإشارة في حساب التداول الخاص بك" });
+    } catch {
+      toast.error("تعذر النسخ من المتصفح");
+    }
+  };
+
 
   return (
     <div dir="rtl" className="min-h-screen px-4 py-8 md:px-8">
@@ -128,7 +182,14 @@ function GoldEngine() {
                 </div>
               </div>
             )}
+            <Link
+              to="/settings"
+              className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-bold text-foreground transition hover:text-primary"
+            >
+              <SettingsIcon size={16} /> الإعدادات
+            </Link>
             <button
+
               onClick={() => refetch()}
               className="glow-gold inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground transition hover:opacity-90"
             >
@@ -183,8 +244,34 @@ function GoldEngine() {
                     </div>
                   ))}
                   <div className="col-span-2 rounded-lg border border-border bg-card px-3 py-2 sm:col-span-3">
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <Clock size={12} /> الأفق الزمني: {engine.sig.horizon}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <Clock size={12} /> الأفق الزمني: {engine.sig.horizon}
+                      </div>
+                      <button
+                        onClick={copySignal}
+                        className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition hover:bg-primary/20"
+                      >
+                        <Copy size={13} /> نسخ الإشارة لحساب التداول
+                      </button>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">فريم التنفيذ: </span>
+                        <b className="text-primary">{engine.execTf}</b>
+                      </div>
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">مخاطرة: </span>
+                        <b>{settings.riskPercent}٪</b>
+                      </div>
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">المبلغ المخاطر: </span>
+                        <b>${f2(engine.size.riskAmount)}</b>
+                      </div>
+                      <div className="rounded-md bg-secondary px-2 py-1">
+                        <span className="text-muted-foreground">الحجم: </span>
+                        <b>{engine.size.lots.toFixed(2)} لوت</b>
+                      </div>
                     </div>
                     <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
                       {engine.sig.notes.map((n) => (
@@ -192,47 +279,39 @@ function GoldEngine() {
                       ))}
                     </ul>
                   </div>
+
                 </div>
               </div>
             </Panel>
 
-            {/* الرسم */}
-            <Panel title="حركة السعر — فريم 5 دقائق" icon={<Activity size={16} />}>
-              <div className="h-64 w-full" dir="ltr">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={engine.chart}>
-                    <defs>
-                      <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="time" tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }} minTickGap={40} />
-                    <YAxis
-                      domain={[(d: number) => d - 2, (d: number) => d + 2]}
-                      tickFormatter={(v: number) => v.toFixed(0)}
-                      tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
-                      width={60}
-                    />
-                    <RTooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        color: "var(--color-foreground)",
-                      }}
-                    />
-                    <Area type="monotone" dataKey="price" stroke="var(--color-primary)" strokeWidth={2} fill="url(#g)" />
-                    {engine.lv.supports.map((s) => (
-                      <ReferenceLine key={`s${s.price}`} y={s.price} stroke="var(--color-success)" strokeDasharray="4 4" />
-                    ))}
-                    {engine.lv.resistances.map((r) => (
-                      <ReferenceLine key={`r${r.price}`} y={r.price} stroke="var(--color-destructive)" strokeDasharray="4 4" />
-                    ))}
-                  </AreaChart>
-                </ResponsiveContainer>
+            {/* اختيار الفريم تلقائيًا */}
+            <Panel title="اختيار الفريم تلقائيًا حسب حالة السوق" icon={<Wand2 size={16} />}>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-lg bg-primary/15 px-3 py-1.5 text-lg font-extrabold text-primary">
+                  {engine.pick.tf}
+                </span>
+                <span className="rounded-md bg-secondary px-2 py-1 text-xs font-bold text-foreground">
+                  الحالة: {engine.pick.regime}
+                </span>
+                {engine.pick.ranked.map((r) => (
+                  <span
+                    key={r.tf}
+                    className={`rounded-md px-2 py-1 text-[11px] ${
+                      r.tf === engine.pick.tf ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {r.tf}: {r.score}
+                  </span>
+                ))}
               </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{engine.pick.reason}</p>
             </Panel>
+
+            {/* المخطط متعدد الطبقات */}
+            <Panel title="مخطط XAU/USD — الطبقات والمؤشرات" icon={<Activity size={16} />}>
+              <MarketChart series={engine.series} lv={engine.lv} tf={engine.execTf} analysis={engine.execAnalysis} />
+            </Panel>
+
 
             <div className="grid gap-6 lg:grid-cols-2">
               {/* الاتجاهات */}
