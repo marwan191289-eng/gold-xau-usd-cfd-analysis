@@ -205,43 +205,34 @@ function GoldEngine() {
               </div>
             </Panel>
 
-            {/* الرسم */}
-            <Panel title="حركة السعر — فريم 5 دقائق" icon={<Activity size={16} />}>
-              <div className="h-64 w-full" dir="ltr">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={engine.chart}>
-                    <defs>
-                      <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="time" tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }} minTickGap={40} />
-                    <YAxis
-                      domain={[(d: number) => d - 2, (d: number) => d + 2]}
-                      tickFormatter={(v: number) => v.toFixed(0)}
-                      tick={{ fontSize: 10, fill: "var(--color-muted-foreground)" }}
-                      width={60}
-                    />
-                    <RTooltip
-                      contentStyle={{
-                        background: "var(--color-card)",
-                        border: "1px solid var(--color-border)",
-                        borderRadius: 8,
-                        color: "var(--color-foreground)",
-                      }}
-                    />
-                    <Area type="monotone" dataKey="price" stroke="var(--color-primary)" strokeWidth={2} fill="url(#g)" />
-                    {engine.lv.supports.map((s) => (
-                      <ReferenceLine key={`s${s.price}`} y={s.price} stroke="var(--color-success)" strokeDasharray="4 4" />
-                    ))}
-                    {engine.lv.resistances.map((r) => (
-                      <ReferenceLine key={`r${r.price}`} y={r.price} stroke="var(--color-destructive)" strokeDasharray="4 4" />
-                    ))}
-                  </AreaChart>
-                </ResponsiveContainer>
+            {/* اختيار الفريم تلقائيًا */}
+            <Panel title="اختيار الفريم تلقائيًا حسب حالة السوق" icon={<Wand2 size={16} />}>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-lg bg-primary/15 px-3 py-1.5 text-lg font-extrabold text-primary">
+                  {engine.pick.tf}
+                </span>
+                <span className="rounded-md bg-secondary px-2 py-1 text-xs font-bold text-foreground">
+                  الحالة: {engine.pick.regime}
+                </span>
+                {engine.pick.ranked.map((r) => (
+                  <span
+                    key={r.tf}
+                    className={`rounded-md px-2 py-1 text-[11px] ${
+                      r.tf === engine.pick.tf ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {r.tf}: {r.score}
+                  </span>
+                ))}
               </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{engine.pick.reason}</p>
             </Panel>
+
+            {/* المخطط متعدد الطبقات */}
+            <Panel title="مخطط XAU/USD — الطبقات والمؤشرات" icon={<Activity size={16} />}>
+              <MarketChart series={engine.series} lv={engine.lv} tf={engine.execTf} analysis={engine.execAnalysis} />
+            </Panel>
+
 
             <div className="grid gap-6 lg:grid-cols-2">
               {/* الاتجاهات */}
