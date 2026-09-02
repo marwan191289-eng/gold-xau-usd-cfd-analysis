@@ -84,6 +84,7 @@ function Panel({
 
 function GoldEngine() {
   const fetchGold = useServerFn(getGoldData);
+  const { settings } = useSettings();
   const { data, isLoading, isFetching, error, refetch, dataUpdatedAt } = useQuery({
     queryKey: ["gold"],
     queryFn: () => fetchGold(),
@@ -95,7 +96,10 @@ function GoldEngine() {
     if (!data) return null;
     const d = data.data as Record<string, Candle[]>;
     const tfs = ["5m", "15m", "1h", "1d"].filter((k) => (d[k]?.length ?? 0) > 60).map((k) => analyzeTF(k, d[k]!));
-    const exec = d["5m"]!;
+    const pick = pickTimeframe(tfs);
+    const execTf = settings.autoTimeframe ? pick.tf : "5m";
+    const exec = d[execTf] ?? d["5m"]!;
+    const execAnalysis = tfs.find((t) => t.tf === execTf) ?? tfs[0]!;
     const execATRArr = atr(exec, 14);
     const execATR = (execATRArr[execATRArr.length - 1] as number) || data.price * 0.002;
     const price = data.price;
@@ -104,13 +108,54 @@ function GoldEngine() {
     const score = tfs.reduce((a, t) => a + t.bias, 0) / (tfs.length || 1);
     const sig = buildSignal(tfs, lv, execATR, price);
     const fc = forecast(price, execATR, score);
-    const chart = exec.slice(-120).map((c) => ({
-      time: new Date(c.t).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }),
-      price: c.c,
-    }));
-    const change = ((price - exec[Math.max(0, exec.length - 78)]!.c) / price) * 100;
-    return { tfs, execATR, price, lv, piv, sig, fc, chart, score, change };
-  }, [data]);
+    const series = buildSeries(exec, 140);
+    const size = positionSize(settings.balance, settings.riskPercent, sig.entry, sig.stop);
+    const m5 = d["5m"]!;
+    const change = ((price - m5[Math.max(0, m5.length - 78)]!.c) / price) * 100;
+    return { tfs, execATR, price, lv, piv, sig, fc, score, change, pick, execTf, execAnalysis, series, size };
+  }, [data, settings.autoTimeframe, settings.balance, settings.riskPercent]);
+
+  /* تنبيهات درجة الثقة */
+  const prevRef = useRef<{ conf: number; action: string } | null>(null);
+  useEffect(() => {
+    if (!engine || !settings.alertsEnabled) return;
+    const cur = { conf: engine.sig.confidence, action: engine.sig.action };
+    const prev = prevRef.current;
+    prevRef.current = cur;
+    if (!prev) return;
+    const fire = (kind: "ارتفاع الثقة" | "انخفاض الثقة" | "تغير الإشارة", message: string) => {
+      pushAlert({ id: `${Date.now()}`, at: Date.now(), kind, message, confidence: cur.conf });
+      toast(kind, { description: message });
+    };
+    if (prev.action !== cur.action) fire("تغير الإشارة", `تحولت الإشارة من ${prev.action} إلى ${cur.action}`);
+    if (prev.conf < settings.riseThreshold && cur.conf >= settings.riseThreshold)
+      fire("ارتفاع الثقة", `ارتفعت درجة الثقة إلى ${cur.conf}% (${cur.action})`);
+    if (prev.conf > settings.dropThreshold && cur.conf <= settings.dropThreshold)
+      fire("انخفاض الثقة", `انخفضت درجة الثقة إلى ${cur.conf}%`);
+  }, [engine, settings.alertsEnabled, settings.riseThreshold, settings.dropThreshold]);
+
+  const copySignal = async () => {
+    if (!engine) return;
+    const s = engine.sig;
+    const text = [
+      `XAU/USD — ${s.action}`,
+      `الفريم: ${engine.execTf} (${settings.autoTimeframe ? "تلقائي" : "يدوي"})`,
+      `الوقت: ${new Date().toLocaleString("ar-EG")}`,
+      `الدخول: ${s.entry.toFixed(2)}`,
+      `وقف الخسارة: ${s.stop.toFixed(2)}`,
+      `الأهداف: ${s.targets.map((t) => t.toFixed(2)).join(" / ")}`,
+      `العائد/المخاطرة: 1:${s.rr.toFixed(2)}`,
+      `الثقة: ${s.confidence}%`,
+      `حجم الصفقة المقترح: ${engine.size.lots.toFixed(2)} لوت (مخاطرة ${settings.riskPercent}٪)`,
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("تم نسخ الإشارة", { description: "الصق الإشارة في حساب التداول الخاص بك" });
+    } catch {
+      toast.error("تعذر النسخ من المتصفح");
+    }
+  };
+
 
   return (
     <div dir="rtl" className="min-h-screen px-4 py-8 md:px-8">
