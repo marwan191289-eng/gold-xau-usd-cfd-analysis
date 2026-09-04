@@ -12,7 +12,10 @@ export type Settings = {
   minConfidence: number;
   autoTimeframe: boolean;
   accountName: string;
+  payLinks: Record<PlanId, string>;
 };
+
+export type PlanId = "starter" | "pro" | "elite";
 
 export const DEFAULT_SETTINGS: Settings = {
   profile: "متوازن",
@@ -24,7 +27,9 @@ export const DEFAULT_SETTINGS: Settings = {
   minConfidence: 55,
   autoTimeframe: true,
   accountName: "",
+  payLinks: { starter: "", pro: "", elite: "" },
 };
+
 
 export const PROFILE_RISK: Record<Exclude<RiskProfile, "مخصص">, number> = {
   محافظ: 0.5,
