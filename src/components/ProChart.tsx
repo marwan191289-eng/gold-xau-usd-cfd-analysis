@@ -169,7 +169,6 @@ export function ProChart({
             <Bar dataKey="candle" name="OHLC" shape={<CandleShape />} isAnimationActive={false} />
 
             {showFc && (
-              <>
                 <Area
                   dataKey="fcBand"
                   name="نطاق التنبؤ"
@@ -180,6 +179,8 @@ export function ProChart({
                   connectNulls
                   isAnimationActive={false}
                 />
+            )}
+            {showFc && (
                 <Line
                   dataKey="fcMid"
                   name="المسار المتوقع"
@@ -190,24 +191,26 @@ export function ProChart({
                   connectNulls
                   isAnimationActive={false}
                 />
-              </>
             )}
 
             {showLevels && (
-              <>
                 <ReferenceLine
                   y={signal.entry}
                   stroke="var(--color-primary)"
                   strokeDasharray="5 4"
                   label={{ value: `دخول ${signal.entry.toFixed(1)}`, fill: "var(--color-primary)", fontSize: 10, position: "insideLeft" }}
                 />
+            )}
+            {showLevels && (
                 <ReferenceLine
                   y={signal.stop}
                   stroke="var(--color-destructive)"
                   strokeDasharray="5 4"
                   label={{ value: `وقف ${signal.stop.toFixed(1)}`, fill: "var(--color-destructive)", fontSize: 10, position: "insideLeft" }}
                 />
-                {signal.targets.map((t, i) => (
+            )}
+            {showLevels &&
+                signal.targets.map((t, i) => (
                   <ReferenceLine
                     key={t}
                     y={t}
@@ -217,8 +220,6 @@ export function ProChart({
                     label={{ value: `هدف ${i + 1} ${t.toFixed(1)}`, fill: "var(--color-success)", fontSize: 10, position: "insideLeft" }}
                   />
                 ))}
-              </>
-            )}
           </ComposedChart>
         </ResponsiveContainer>
       </div>
