@@ -307,10 +307,16 @@ function GoldEngine() {
               <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{engine.pick.reason}</p>
             </Panel>
 
+            {/* شارت احترافي: حركة السعر + الإشارات + التنبؤات */}
+            <Panel title="شارت احترافي — حركة السعر والإشارات والتنبؤات" icon={<CandlestickChart size={16} />} className="glow-gold">
+              <ProChart candles={engine.exec} signal={engine.sig} fc={engine.fc} tf={engine.execTf} />
+            </Panel>
+
             {/* المخطط متعدد الطبقات */}
             <Panel title="مخطط XAU/USD — الطبقات والمؤشرات" icon={<Activity size={16} />}>
               <MarketChart series={engine.series} lv={engine.lv} tf={engine.execTf} analysis={engine.execAnalysis} />
             </Panel>
+
 
 
             <div className="grid gap-6 lg:grid-cols-2">
