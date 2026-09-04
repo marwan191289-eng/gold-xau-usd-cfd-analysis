@@ -18,6 +18,7 @@ import {
   Settings as SettingsIcon,
   Wand2,
   Bell,
+  CandlestickChart,
 } from "lucide-react";
 
 import { getGoldData } from "@/lib/gold.functions";
@@ -34,6 +35,7 @@ import {
 } from "@/lib/analysis";
 import type { Candle } from "@/lib/analysis";
 import { MarketChart } from "@/components/MarketChart";
+import { ProChart } from "@/components/ProChart";
 import { pushAlert, useSettings } from "@/lib/settings";
 
 
@@ -112,7 +114,7 @@ function GoldEngine() {
     const size = positionSize(settings.balance, settings.riskPercent, sig.entry, sig.stop);
     const m5 = d["5m"]!;
     const change = ((price - m5[Math.max(0, m5.length - 78)]!.c) / price) * 100;
-    return { tfs, execATR, price, lv, piv, sig, fc, score, change, pick, execTf, execAnalysis, series, size };
+    return { tfs, execATR, price, lv, piv, sig, fc, score, change, pick, execTf, execAnalysis, series, size, exec };
   }, [data, settings.autoTimeframe, settings.balance, settings.riskPercent]);
 
   /* تنبيهات درجة الثقة */
