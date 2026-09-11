@@ -29,25 +29,54 @@ export function ema(v: number[], p: number): (number | null)[] {
   return out;
 }
 
+/** Wilder's smoothing (RMA) — المعيار الصحيح لمؤشرات RSI/ATR/ADX. */
+export function rma(v: number[], p: number): (number | null)[] {
+  const out: (number | null)[] = [];
+  let prev: number | null = null;
+  v.forEach((x, i) => {
+    if (i + 1 < p) {
+      out.push(null);
+      return;
+    }
+    prev = prev === null ? sum(v.slice(i + 1 - p, i + 1)) / p : (prev * (p - 1) + x) / p;
+    out.push(prev);
+  });
+  return out;
+}
+
+/** ميل خط الانحدار الخطي كنسبة من السعر (قياس زخم مستقر ضد الضجيج). */
+export function slope(v: number[], p = 20): number {
+  const w = v.slice(-p);
+  const n = w.length;
+  if (n < 3) return 0;
+  const mx = (n - 1) / 2;
+  const my = sum(w) / n;
+  let num = 0;
+  let den = 0;
+  w.forEach((y, i) => {
+    num += (i - mx) * (y - my);
+    den += (i - mx) ** 2;
+  });
+  const b = den ? num / den : 0;
+  return (b / (my || 1)) * 100 * p; // نسبة التغير المتوقعة عبر النافذة
+}
+
 export function rsi(v: number[], p = 14): (number | null)[] {
-  const out: (number | null)[] = [null];
-  let g = 0;
-  let l = 0;
+  const up: number[] = [0];
+  const dn: number[] = [0];
   for (let i = 1; i < v.length; i++) {
     const d = v[i]! - v[i - 1]!;
-    const up = Math.max(d, 0);
-    const dn = Math.max(-d, 0);
-    if (i <= p) {
-      g += up / p;
-      l += dn / p;
-      out.push(i === p ? (l === 0 ? 100 : 100 - 100 / (1 + g / l)) : null);
-    } else {
-      g = (g * (p - 1) + up) / p;
-      l = (l * (p - 1) + dn) / p;
-      out.push(l === 0 ? 100 : 100 - 100 / (1 + g / l));
-    }
+    up.push(Math.max(d, 0));
+    dn.push(Math.max(-d, 0));
   }
-  return out;
+  const gu = rma(up, p);
+  const gd = rma(dn, p);
+  return v.map((_, i) => {
+    const g = gu[i];
+    const l = gd[i];
+    if (g == null || l == null) return null;
+    return l === 0 ? 100 : 100 - 100 / (1 + g / l);
+  });
 }
 
 export function macd(v: number[], fast = 12, slow = 26, signal = 9) {
@@ -66,7 +95,7 @@ export function atr(c: Candle[], p = 14): (number | null)[] {
   const tr = c.map((k, i) =>
     i === 0 ? k.h - k.l : Math.max(k.h - k.l, Math.abs(k.h - c[i - 1]!.c), Math.abs(k.l - c[i - 1]!.c)),
   );
-  return ema(tr, p);
+  return rma(tr, p);
 }
 
 export function bollinger(v: number[], p = 20, mult = 2) {
@@ -93,7 +122,8 @@ export function stochastic(c: Candle[], p = 14, sm = 3) {
   return { k, d: [...Array(k.length - valid.length).fill(null), ...d] };
 }
 
-export function adx(c: Candle[], p = 14): (number | null)[] {
+/** ADX/DI بطريقة Wilder الصحيحة. */
+export function directional(c: Candle[], p = 14) {
   const plus: number[] = [0];
   const minus: number[] = [0];
   const tr: number[] = [c[0]!.h - c[0]!.l];
@@ -104,18 +134,34 @@ export function adx(c: Candle[], p = 14): (number | null)[] {
     minus.push(dn > up && dn > 0 ? dn : 0);
     tr.push(Math.max(c[i]!.h - c[i]!.l, Math.abs(c[i]!.h - c[i - 1]!.c), Math.abs(c[i]!.l - c[i - 1]!.c)));
   }
-  const atrS = ema(tr, p);
-  const pS = ema(plus, p);
-  const mS = ema(minus, p);
-  const dx = c.map((_, i) => {
-    if (atrS[i] == null || !atrS[i]) return null;
-    const pdi = ((pS[i] as number) / (atrS[i] as number)) * 100;
-    const mdi = ((mS[i] as number) / (atrS[i] as number)) * 100;
-    return pdi + mdi === 0 ? null : (Math.abs(pdi - mdi) / (pdi + mdi)) * 100;
+  const atrS = rma(tr, p);
+  const pS = rma(plus, p);
+  const mS = rma(minus, p);
+  const pdi: (number | null)[] = [];
+  const mdi: (number | null)[] = [];
+  const dx: (number | null)[] = [];
+  c.forEach((_, i) => {
+    const a = atrS[i];
+    if (a == null || !a || pS[i] == null || mS[i] == null) {
+      pdi.push(null);
+      mdi.push(null);
+      dx.push(null);
+      return;
+    }
+    const pv = ((pS[i] as number) / a) * 100;
+    const mv = ((mS[i] as number) / a) * 100;
+    pdi.push(pv);
+    mdi.push(mv);
+    dx.push(pv + mv === 0 ? null : (Math.abs(pv - mv) / (pv + mv)) * 100);
   });
   const valid = dx.filter((x): x is number => x != null);
-  const smoothed = ema(valid, p);
-  return [...Array(dx.length - valid.length).fill(null), ...smoothed];
+  const smoothed = rma(valid, p);
+  const adxFull: (number | null)[] = [...Array(dx.length - valid.length).fill(null), ...smoothed];
+  return { adx: adxFull, pdi, mdi };
+}
+
+export function adx(c: Candle[], p = 14): (number | null)[] {
+  return directional(c, p).adx;
 }
 
 export function vwap(c: Candle[]): number | null {
@@ -194,14 +240,21 @@ export type TFAnalysis = {
   macdHist: number;
   macdLine: number;
   adx: number;
+  pdi: number;
+  mdi: number;
   atr: number;
   stochK: number;
   stochD: number;
   bbWidth: number;
   vwap: number | null;
+  slope: number;
+  structure: "قمم وقيعان صاعدة" | "قمم وقيعان هابطة" | "بنية متداخلة";
+  divergence: "إيجابي" | "سلبي" | "لا يوجد";
+  volPct: number;
   trend: "صاعد" | "هابط" | "عرضي";
   trendStrength: number;
   bias: number; // -100..100
+  quality: number; // 0..100 جودة البيئة للتداول
   reasons: string[];
 };
 
