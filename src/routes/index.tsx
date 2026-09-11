@@ -19,6 +19,7 @@ import {
   Wand2,
   Bell,
   CandlestickChart,
+  CreditCard,
 } from "lucide-react";
 
 import { getGoldData } from "@/lib/gold.functions";
@@ -203,6 +204,12 @@ function GoldEngine() {
                 </div>
               </div>
             )}
+            <Link
+              to="/payment"
+              className="inline-flex items-center gap-2 rounded-lg border border-primary/50 bg-secondary px-3 py-2 text-sm font-bold text-primary transition hover:opacity-90"
+            >
+              <CreditCard size={16} /> الاشتراك
+            </Link>
             <Link
               to="/settings"
               className="inline-flex items-center gap-2 rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-bold text-foreground transition hover:text-primary"
