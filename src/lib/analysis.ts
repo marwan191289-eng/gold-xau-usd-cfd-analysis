@@ -263,85 +263,159 @@ const last = <T,>(a: (T | null)[]): T => {
   return 0 as unknown as T;
 };
 
+/** بنية السوق: قمم وقيعان متتالية. */
+function marketStructure(c: Candle[]): TFAnalysis["structure"] {
+  const L = 3;
+  const hi: number[] = [];
+  const lo: number[] = [];
+  for (let i = c.length - 60 > L ? c.length - 60 : L; i < c.length - L; i++) {
+    const w = c.slice(i - L, i + L + 1);
+    if (c[i]!.h === Math.max(...w.map((x) => x.h))) hi.push(c[i]!.h);
+    if (c[i]!.l === Math.min(...w.map((x) => x.l))) lo.push(c[i]!.l);
+  }
+  const up = hi.length >= 2 && lo.length >= 2 && hi.at(-1)! > hi.at(-2)! && lo.at(-1)! > lo.at(-2)!;
+  const dn = hi.length >= 2 && lo.length >= 2 && hi.at(-1)! < hi.at(-2)! && lo.at(-1)! < lo.at(-2)!;
+  return up ? "قمم وقيعان صاعدة" : dn ? "قمم وقيعان هابطة" : "بنية متداخلة";
+}
+
+/** دايفرجنس RSI مقابل السعر على آخر نافذة. */
+function rsiDivergence(c: Candle[], r: (number | null)[]): TFAnalysis["divergence"] {
+  const n = c.length;
+  const w = 30;
+  if (n < w * 2) return "لا يوجد";
+  const a = c.slice(n - w * 2, n - w);
+  const b = c.slice(n - w);
+  const ra = r.slice(n - w * 2, n - w).filter((x): x is number => x != null);
+  const rb = r.slice(n - w).filter((x): x is number => x != null);
+  if (!ra.length || !rb.length) return "لا يوجد";
+  const pLowA = Math.min(...a.map((x) => x.l));
+  const pLowB = Math.min(...b.map((x) => x.l));
+  const pHighA = Math.max(...a.map((x) => x.h));
+  const pHighB = Math.max(...b.map((x) => x.h));
+  const rLowA = Math.min(...ra);
+  const rLowB = Math.min(...rb);
+  const rHighA = Math.max(...ra);
+  const rHighB = Math.max(...rb);
+  if (pLowB < pLowA && rLowB > rLowA) return "إيجابي";
+  if (pHighB > pHighA && rHighB < rHighA) return "سلبي";
+  return "لا يوجد";
+}
+
 export function analyzeTF(tf: string, c: Candle[]): TFAnalysis {
   const close = c.map((x) => x.c);
   const e20 = last(ema(close, 20));
   const e50 = last(ema(close, 50));
-  const e200 = last(ema(close, Math.min(200, Math.floor(close.length / 2))));
-  const r = last(rsi(close, 14));
+  const e200 = last(ema(close, Math.min(200, Math.max(20, Math.floor(close.length / 2)))));
+  const rArr = rsi(close, 14);
+  const r = last(rArr);
   const m = macd(close);
   const mh = last(m.hist);
+  const mhPrev = (m.hist[m.hist.length - 2] ?? mh) as number;
   const ml = last(m.line);
   const a = last(atr(c, 14));
-  const adxV = last(adx(c, 14));
+  const dir = directional(c, 14);
+  const adxV = last(dir.adx);
+  const pdiV = last(dir.pdi);
+  const mdiV = last(dir.mdi);
   const st = stochastic(c);
   const bb = bollinger(close);
   const bbw = (bb[bb.length - 1]?.width ?? 0) as number;
   const price = close[close.length - 1]!;
   const vw = vwap(c);
+  const sl = slope(close, 20);
+  const structure = marketStructure(c);
+  const divergence = rsiDivergence(c, rArr);
+  const volPct = (a / price) * 100;
 
   let bias = 0;
   const reasons: string[] = [];
-  if (price > e20) {
+
+  /* 1) هيكل الاتجاه (وزن أعلى للمعطيات الأكثر موثوقية) */
+  if (e20 > e50 && e50 > e200) {
+    bias += 20;
+    reasons.push("ترتيب صاعد كامل للمتوسطات EMA20>EMA50>EMA200");
+  } else if (e20 < e50 && e50 < e200) {
+    bias -= 20;
+    reasons.push("ترتيب هابط كامل للمتوسطات EMA20<EMA50<EMA200");
+  } else {
+    reasons.push("تشابك المتوسطات — اتجاه غير محسوم");
+  }
+  if (price > e20) bias += 8;
+  else bias -= 8;
+
+  /* 2) الزخم الاتجاهي عبر DI (بديل أدق من مجرد ADX) */
+  const diGap = pdiV - mdiV;
+  if (adxV >= 20) {
+    bias += Math.max(-18, Math.min(18, diGap * 1.2));
+    reasons.push(`ADX ${adxV.toFixed(1)} مع ${diGap >= 0 ? "+DI" : "-DI"} مسيطر (فارق ${Math.abs(diGap).toFixed(1)})`);
+  } else {
+    reasons.push(`ADX ${adxV.toFixed(1)} — بيئة عرضية، تقليل وزن الاتجاه`);
+  }
+
+  /* 3) ميل الانحدار الخطي */
+  bias += Math.max(-14, Math.min(14, sl * 6));
+  reasons.push(`ميل الانحدار ${sl >= 0 ? "+" : ""}${sl.toFixed(2)}٪ عبر آخر 20 شمعة`);
+
+  /* 4) الزخم: MACD واتجاه الهيستوجرام */
+  if (mh > 0) bias += 8;
+  else bias -= 8;
+  if (mh > mhPrev) bias += 5;
+  else bias -= 5;
+  reasons.push(`MACD ${mh > 0 ? "موجب" : "سالب"} و${mh > mhPrev ? "يتصاعد" : "يتراجع"}`);
+
+  /* 5) RSI مع معالجة صحيحة للتشبع داخل الاتجاه */
+  const strongTrend = adxV >= 25;
+  if (r > 55) bias += Math.min((r - 50) * 0.6, 12);
+  else if (r < 45) bias -= Math.min((50 - r) * 0.6, 12);
+  if (!strongTrend) {
+    if (r > 72) {
+      bias -= 10;
+      reasons.push("تشبع شرائي في سوق عرضي — خطر ارتداد");
+    }
+    if (r < 28) {
+      bias += 10;
+      reasons.push("تشبع بيعي في سوق عرضي — احتمال ارتداد صاعد");
+    }
+  } else reasons.push(`RSI ${r.toFixed(1)} داخل اتجاه قوي — التشبع ليس إشارة انعكاس`);
+
+  /* 6) البنية السعرية */
+  if (structure === "قمم وقيعان صاعدة") {
     bias += 12;
-    reasons.push(`السعر فوق EMA20 (${e20.toFixed(2)})`);
-  } else {
+    reasons.push("بنية السوق: قمم وقيعان صاعدة");
+  } else if (structure === "قمم وقيعان هابطة") {
     bias -= 12;
-    reasons.push(`السعر تحت EMA20 (${e20.toFixed(2)})`);
+    reasons.push("بنية السوق: قمم وقيعان هابطة");
   }
-  if (e20 > e50) {
-    bias += 14;
-    reasons.push("تقاطع EMA20 فوق EMA50 — زخم صاعد");
-  } else {
-    bias -= 14;
-    reasons.push("EMA20 تحت EMA50 — زخم هابط");
+
+  /* 7) الدايفرجنس */
+  if (divergence === "إيجابي") {
+    bias += 9;
+    reasons.push("دايفرجنس إيجابي بين السعر وRSI");
+  } else if (divergence === "سلبي") {
+    bias -= 9;
+    reasons.push("دايفرجنس سلبي بين السعر وRSI");
   }
-  if (price > e200) {
-    bias += 10;
-    reasons.push("الاتجاه العام فوق EMA200");
-  } else {
-    bias -= 10;
-    reasons.push("الاتجاه العام تحت EMA200");
-  }
-  if (r > 55) {
-    bias += Math.min((r - 50) * 0.8, 16);
-    reasons.push(`RSI قوي عند ${r.toFixed(1)}`);
-  } else if (r < 45) {
-    bias -= Math.min((50 - r) * 0.8, 16);
-    reasons.push(`RSI ضعيف عند ${r.toFixed(1)}`);
-  } else reasons.push(`RSI محايد عند ${r.toFixed(1)}`);
-  if (r > 72) {
-    bias -= 8;
-    reasons.push("تشبع شرائي — حذر من ارتداد");
-  }
-  if (r < 28) {
-    bias += 8;
-    reasons.push("تشبع بيعي — احتمال ارتداد صاعد");
-  }
-  if (mh > 0) {
-    bias += 12;
-    reasons.push("هيستوجرام MACD موجب");
-  } else {
-    bias -= 12;
-    reasons.push("هيستوجرام MACD سالب");
-  }
+
+  /* 8) VWAP وستوكاستيك (وزن خفيف) */
   const k = last(st.k) as number;
   const d = last(st.d) as number;
-  if (k > d) bias += 6;
-  else bias -= 6;
+  bias += k > d ? 4 : -4;
   if (vw != null) {
-    if (price > vw) {
-      bias += 8;
-      reasons.push(`السعر فوق VWAP (${vw.toFixed(2)})`);
-    } else {
-      bias -= 8;
-      reasons.push(`السعر تحت VWAP (${vw.toFixed(2)})`);
-    }
+    bias += price > vw ? 6 : -6;
+    reasons.push(`السعر ${price > vw ? "فوق" : "تحت"} VWAP (${vw.toFixed(2)})`);
   }
-  const strength = Math.min(100, Math.round(adxV));
-  const factor = adxV >= 25 ? 1.15 : adxV < 18 ? 0.75 : 1;
+
+  /* معايرة نهائية حسب وضوح الاتجاه */
+  const factor = adxV >= 30 ? 1.2 : adxV >= 22 ? 1.05 : adxV < 16 ? 0.6 : 0.85;
   bias = Math.max(-100, Math.min(100, bias * factor));
-  reasons.push(adxV >= 25 ? `ADX ${adxV.toFixed(1)} — اتجاه واضح` : `ADX ${adxV.toFixed(1)} — اتجاه ضعيف/عرضي`);
+
+  /* جودة البيئة: تقلب مناسب + اتجاه واضح + بنية متسقة */
+  let quality = 50;
+  quality += adxV >= 25 ? 20 : adxV < 16 ? -20 : 0;
+  quality += volPct >= 0.08 && volPct <= 0.9 ? 15 : -15;
+  quality += bbw < 0.004 ? -15 : 5;
+  quality += structure !== "بنية متداخلة" ? 10 : -5;
+  quality = Math.max(0, Math.min(100, quality));
 
   const trend: TFAnalysis["trend"] = adxV < 18 || Math.abs(bias) < 15 ? "عرضي" : bias > 0 ? "صاعد" : "هابط";
 
@@ -355,14 +429,21 @@ export function analyzeTF(tf: string, c: Candle[]): TFAnalysis {
     macdHist: mh,
     macdLine: ml,
     adx: adxV,
+    pdi: pdiV,
+    mdi: mdiV,
     atr: a,
     stochK: k,
     stochD: d,
     bbWidth: bbw,
     vwap: vw,
+    slope: sl,
+    structure,
+    divergence,
+    volPct,
     trend,
-    trendStrength: strength,
+    trendStrength: Math.min(100, Math.round(adxV)),
     bias: Math.round(bias),
+    quality: Math.round(quality),
     reasons,
   };
 }
@@ -378,13 +459,75 @@ export type Signal = {
   notes: string[];
 };
 
-const WEIGHTS: Record<string, number> = { "5m": 0.2, "15m": 0.3, "1h": 0.3, "1d": 0.2 };
+const WEIGHTS: Record<string, number> = { "5m": 0.15, "15m": 0.3, "1h": 0.35, "1d": 0.2 };
+
+/**
+ * اختبار تاريخي سريع (walk-forward) لقاعدة الدخول على نفس الفريم،
+ * يُستخدم لمعايرة درجة الثقة بدل الاعتماد على أرقام نظرية.
+ */
+export function backtest(c: Candle[], lookback = 400) {
+  const n = c.length;
+  const startI = Math.max(60, n - lookback);
+  const close = c.map((x) => x.c);
+  const e20 = ema(close, 20);
+  const e50 = ema(close, 50);
+  const r = rsi(close, 14);
+  const m = macd(close);
+  const dir = directional(c, 14);
+  const a = atr(c, 14);
+  let wins = 0;
+  let losses = 0;
+  let rSum = 0;
+  for (let i = startI; i < n - 12; i++) {
+    const av = a[i];
+    const ad = dir.adx[i];
+    if (av == null || !av || ad == null || ad < 20) continue;
+    const up = (e20[i] ?? 0) > (e50[i] ?? 0) && (m.hist[i] ?? 0) > 0 && (r[i] ?? 50) > 50;
+    const dn = (e20[i] ?? 0) < (e50[i] ?? 0) && (m.hist[i] ?? 0) < 0 && (r[i] ?? 50) < 50;
+    if (!up && !dn) continue;
+    const entry = close[i]!;
+    const stop = up ? entry - av * 1.2 : entry + av * 1.2;
+    const target = up ? entry + av * 2.0 : entry - av * 2.0;
+    let done = false;
+    for (let j = i + 1; j <= Math.min(n - 1, i + 12); j++) {
+      const hit = up ? c[j]!.h >= target : c[j]!.l <= target;
+      const out = up ? c[j]!.l <= stop : c[j]!.h >= stop;
+      if (out) {
+        losses++;
+        rSum -= 1;
+        done = true;
+        break;
+      }
+      if (hit) {
+        wins++;
+        rSum += 2.0 / 1.2;
+        done = true;
+        break;
+      }
+    }
+    if (!done) {
+      const exit = close[Math.min(n - 1, i + 12)]!;
+      const rMul = ((up ? exit - entry : entry - exit) / (av * 1.2)) as number;
+      rSum += rMul;
+      if (rMul > 0) wins++;
+      else losses++;
+    }
+    i += 3; // تجنب تكرار نفس الإشارة
+  }
+  const trades = wins + losses;
+  return {
+    trades,
+    winRate: trades ? (wins / trades) * 100 : 0,
+    expectancy: trades ? rSum / trades : 0,
+  };
+}
 
 export function buildSignal(
   tfs: TFAnalysis[],
   lv: ReturnType<typeof levels>,
   execATR: number,
   price: number,
+  bt?: { trades: number; winRate: number; expectancy: number },
 ): Signal {
   let score = 0;
   let wsum = 0;
@@ -396,48 +539,69 @@ export function buildSignal(
   score = score / (wsum || 1);
 
   const aligned = tfs.filter((t) => Math.sign(t.bias) === Math.sign(score) && Math.abs(t.bias) > 10).length;
-  const alignmentBonus = (aligned / tfs.length) * 20;
-  let confidence = Math.min(96, Math.round(Math.abs(score) * 0.8 + alignmentBonus));
-
   const notes: string[] = [];
+
+  /* فلتر الاتجاه الأعلى: لا نتداول ضد فريم الساعة/اليوم */
+  const htf = tfs.find((t) => t.tf === "1h") ?? tfs.find((t) => t.tf === "1d");
+  const against = htf && Math.abs(htf.bias) > 25 && Math.sign(htf.bias) !== Math.sign(score);
+  if (against) notes.push(`الإشارة تعاكس اتجاه فريم ${htf!.tf} — تم خفض الأولوية بشدة`);
+
+  const avgQuality = tfs.reduce((s, t) => s + t.quality, 0) / (tfs.length || 1);
+
+  let confidence = Math.round(Math.abs(score) * 0.55 + (aligned / (tfs.length || 1)) * 22 + avgQuality * 0.2);
+  if (bt && bt.trades >= 12) {
+    const edge = (bt.winRate - 50) * 0.35 + bt.expectancy * 8;
+    confidence = Math.round(confidence + Math.max(-18, Math.min(15, edge)));
+    notes.push(
+      `معايرة تاريخية: ${bt.trades} صفقة، نسبة نجاح ${bt.winRate.toFixed(0)}٪، توقّع ${bt.expectancy.toFixed(2)}R`,
+    );
+  }
+  if (against) confidence = Math.round(confidence * 0.55);
+
   const choppy = tfs.filter((t) => t.trend === "عرضي").length >= tfs.length / 2;
   if (choppy) {
-    confidence = Math.round(confidence * 0.7);
-    notes.push("السوق في نطاق عرضي على أغلب الفريمات — تقليل حجم الصفقة");
+    confidence = Math.round(confidence * 0.75);
+    notes.push("أغلب الفريمات عرضية — تقليل حجم الصفقة");
   }
-  notes.push(`توافق الفريمات: ${aligned}/${tfs.length}`);
+  confidence = Math.max(0, Math.min(94, confidence));
+  notes.push(`توافق الفريمات: ${aligned}/${tfs.length} • جودة البيئة ${avgQuality.toFixed(0)}٪`);
 
   const nearestRes = lv.resistances[0]?.price ?? price + execATR * 3;
   const nearestSup = lv.supports[0]?.price ?? price - execATR * 3;
 
   let action: Signal["action"] = "انتظار";
-  if (score >= 22 && confidence >= 45) action = "شراء";
-  else if (score <= -22 && confidence >= 45) action = "بيع";
-  else notes.push("لا توجد أفضلية كافية — الانتظار أفضل قرار الآن");
+  if (!against && score >= 25 && confidence >= 52) action = "شراء";
+  else if (!against && score <= -25 && confidence >= 52) action = "بيع";
+  else notes.push("لا توجد أفضلية إحصائية كافية — الانتظار أفضل قرار الآن");
 
   let stop: number;
   let targets: number[];
   if (action === "شراء") {
-    stop = Math.min(nearestSup - execATR * 0.35, price - execATR * 1.2);
-    targets = [price + execATR * 1.2, Math.max(nearestRes, price + execATR * 2.2), price + execATR * 3.4];
+    stop = Math.min(nearestSup - execATR * 0.4, price - execATR * 1.1);
+    targets = [price + execATR * 1.1, Math.max(nearestRes, price + execATR * 2.0), price + execATR * 3.2];
     if (nearestRes - price < execATR * 0.6) {
-      notes.push("مقاومة قريبة جدًا — يفضل الانتظار حتى الاختراق وإعادة الاختبار");
+      notes.push("مقاومة قريبة جدًا — يفضل انتظار الاختراق وإعادة الاختبار");
       confidence = Math.round(confidence * 0.8);
     }
   } else if (action === "بيع") {
-    stop = Math.max(nearestRes + execATR * 0.35, price + execATR * 1.2);
-    targets = [price - execATR * 1.2, Math.min(nearestSup, price - execATR * 2.2), price - execATR * 3.4];
+    stop = Math.max(nearestRes + execATR * 0.4, price + execATR * 1.1);
+    targets = [price - execATR * 1.1, Math.min(nearestSup, price - execATR * 2.0), price - execATR * 3.2];
     if (price - nearestSup < execATR * 0.6) {
       notes.push("دعم قريب جدًا — خطر ارتداد عكسي");
       confidence = Math.round(confidence * 0.8);
     }
   } else {
-    stop = price - execATR * 1.2;
-    targets = [price + execATR * 1.2, price + execATR * 2.2, price + execATR * 3.4];
+    stop = price - execATR * 1.1;
+    targets = [price + execATR * 1.1, price + execATR * 2.0, price + execATR * 3.2];
   }
 
   const risk = Math.abs(price - stop) || execATR;
   const rr = Math.abs(targets[1]! - price) / risk;
+  if (action !== "انتظار" && rr < 1.2) {
+    action = "انتظار";
+    notes.push("العائد مقابل المخاطرة أقل من 1.2 — الصفقة غير مجدية");
+    confidence = Math.round(confidence * 0.7);
+  }
   notes.push(`تقلب ATR على فريم التنفيذ: ${execATR.toFixed(2)}$`);
 
   return {
@@ -452,16 +616,19 @@ export function buildSignal(
   };
 }
 
-export function forecast(price: number, execATR: number, score: number) {
-  const drift = (score / 100) * execATR;
+/**
+ * توقع سعري يمزج الانجراف الاتجاهي (مُخمَّد بجودة الاتجاه) مع الارتداد للمتوسط
+ * في البيئة العرضية، ونطاق احتمالي يتوسع بجذر الزمن.
+ */
+export function forecast(price: number, execATR: number, score: number, adxVal = 22, anchor?: number | null) {
+  const trendQuality = Math.max(0.25, Math.min(1.15, adxVal / 25));
+  const drift = (score / 100) * execATR * trendQuality;
+  const pull = anchor != null && adxVal < 20 ? (anchor - price) * 0.25 : 0;
   const mk = (h: number) => {
-    const s = execATR * Math.sqrt(h);
-    return {
-      hours: h,
-      mid: price + drift * Math.sqrt(h) * 0.8,
-      low: price + drift * Math.sqrt(h) * 0.8 - s,
-      high: price + drift * Math.sqrt(h) * 0.8 + s,
-    };
+    const sq = Math.sqrt(h);
+    const mid = price + drift * sq * 0.85 + pull * Math.min(1, sq / 2);
+    const band = execATR * sq * (adxVal < 20 ? 0.85 : 1.05);
+    return { hours: h, mid, low: mid - band, high: mid + band };
   };
   return [mk(1), mk(4), mk(8), mk(24)];
 }
