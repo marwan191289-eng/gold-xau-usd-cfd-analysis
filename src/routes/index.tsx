@@ -26,6 +26,7 @@ import {
   analyzeTF,
   atr,
   buildSeries,
+  backtest,
   buildSignal,
   forecast,
   levels,
@@ -108,13 +109,31 @@ function GoldEngine() {
     const lv = levels(d["15m"] ?? exec, execATR * 1.5);
     const piv = pivots(d["1h"] ?? exec, 24);
     const score = tfs.reduce((a, t) => a + t.bias, 0) / (tfs.length || 1);
-    const sig = buildSignal(tfs, lv, execATR, price);
-    const fc = forecast(price, execATR, score);
+    const bt = backtest(exec, 400);
+    const sig = buildSignal(tfs, lv, execATR, price, bt);
+    const fc = forecast(price, execATR, score, execAnalysis.adx, execAnalysis.vwap ?? execAnalysis.ema50);
     const series = buildSeries(exec, 140);
     const size = positionSize(settings.balance, settings.riskPercent, sig.entry, sig.stop);
     const m5 = d["5m"]!;
     const change = ((price - m5[Math.max(0, m5.length - 78)]!.c) / price) * 100;
-    return { tfs, execATR, price, lv, piv, sig, fc, score, change, pick, execTf, execAnalysis, series, size, exec };
+    return {
+      tfs,
+      execATR,
+      price,
+      lv,
+      piv,
+      sig,
+      fc,
+      score,
+      change,
+      pick,
+      execTf,
+      execAnalysis,
+      series,
+      size,
+      exec,
+      bt,
+    };
   }, [data, settings.autoTimeframe, settings.balance, settings.riskPercent]);
 
   /* تنبيهات درجة الثقة */
