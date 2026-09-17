@@ -1,9 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Check, CreditCard, Crown, Link2, Rocket, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowRight, BadgeCheck, Check, CreditCard, Crown, LoaderCircle, Rocket, ShieldCheck, Sparkles } from "lucide-react";
 
-import { useSettings, type PlanId } from "@/lib/settings";
+import { createCheckout, paymentsReady } from "@/lib/billing.functions";
+import { PLAN_LABEL, useSubscription, type Certificate } from "@/lib/license";
 
 export const Route = createFileRoute("/payment")({
   head: () => ({
@@ -11,10 +12,11 @@ export const Route = createFileRoute("/payment")({
       { title: "الاشتراك والدفع — محرك تحليل الذهب XAU/USD" },
       {
         name: "description",
-        content: "اختر باقة الاشتراك في محرك تحليل الذهب XAU/USD: إشارات لحظية، تنبؤات، وتنبيهات ثقة — دفع آمن عبر رابط الدفع.",
+        content:
+          "اشترك في محرك تحليل الذهب XAU/USD: الدفع الآمن يصدر شهادة اشتراك تلقائية تفتح لوحة المخطط والتحليل الكاملة فورًا.",
       },
       { property: "og:title", content: "الاشتراك في محرك تحليل الذهب XAU/USD" },
-      { property: "og:description", content: "باقات 200$ و500$ و800$ للوصول الكامل لإشارات وتنبؤات الذهب." },
+      { property: "og:description", content: "باقات 200$ و500$ و800$ مع تفعيل فوري بشهادة اشتراك موقّعة." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -22,9 +24,10 @@ export const Route = createFileRoute("/payment")({
   component: PaymentPage,
 });
 
+type PlanId = "starter" | "pro" | "elite";
+
 type Plan = {
   id: PlanId;
-  name: string;
   price: number;
   period: string;
   tag?: string;
@@ -35,20 +38,18 @@ type Plan = {
 const PLANS: Plan[] = [
   {
     id: "starter",
-    name: "الباقة الأساسية",
     price: 200,
     period: "شهريًا",
     icon: <Rocket size={18} />,
     features: [
       "إشارات XAU/USD لحظية على فريم واحد",
       "الدعوم والمقاومات الأساسية",
-      "تحديث تلقائي كل 60 ثانية",
+      "تحديث تلقائي في الخلفية",
       "دعم عبر البريد",
     ],
   },
   {
     id: "pro",
-    name: "الباقة الاحترافية",
     price: 500,
     period: "شهريًا",
     tag: "الأكثر اختيارًا",
@@ -63,7 +64,6 @@ const PLANS: Plan[] = [
   },
   {
     id: "elite",
-    name: "باقة النخبة",
     price: 800,
     period: "شهريًا",
     icon: <Crown size={18} />,
@@ -71,27 +71,40 @@ const PLANS: Plan[] = [
       "كل مزايا الباقة الاحترافية",
       "إدارة مخاطر وحجم صفقة مخصص",
       "أولوية في سرعة تحديث البيانات",
-      "تقارير أداء وتوقعات ممتدة",
+      "تقارير أداء ومقارنة بالسوق الحقيقي",
       "دعم مباشر ذو أولوية",
     ],
   },
 ];
 
 function PaymentPage() {
-  const { settings, update, loaded } = useSettings();
+  const { cert, active } = useSubscription();
   const [selected, setSelected] = useState<PlanId>("pro");
-  const [editLinks, setEditLinks] = useState(false);
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState<PlanId | null>(null);
+  const [ready, setReady] = useState<boolean | null>(null);
 
-  const go = (plan: Plan) => {
-    const url = settings.payLinks[plan.id]?.trim();
-    if (!url) {
-      setEditLinks(true);
-      toast.error("لا يوجد رابط دفع لهذه الباقة", {
-        description: "أضف رابط الدفع الخاص بك ثم أعد المحاولة",
+  useEffect(() => {
+    paymentsReady()
+      .then((r) => setReady(r.ready))
+      .catch(() => setReady(false));
+  }, []);
+
+  const go = async (plan: Plan) => {
+    setSelected(plan.id);
+    setBusy(plan.id);
+    try {
+      const res = await createCheckout({
+        data: { plan: plan.id, origin: window.location.origin, email: email.trim() },
       });
-      return;
+      window.location.href = res.url;
+    } catch (e) {
+      toast.error("تعذر بدء عملية الدفع", {
+        description: e instanceof Error ? e.message : "حاول مرة أخرى",
+      });
+    } finally {
+      setBusy(null);
     }
-    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -101,7 +114,7 @@ function PaymentPage() {
           <p className="text-xs font-semibold tracking-[0.3em] text-primary">SUBSCRIPTION</p>
           <h1 className="text-gold mt-1 text-3xl font-extrabold md:text-4xl">اشترك في محرك تحليل الذهب</h1>
           <p className="mx-auto mt-2 max-w-2xl text-sm text-muted-foreground">
-            وصول كامل لإشارات XAU/USD اللحظية، الشارت الاحترافي، التنبؤات قصيرة المدى وتنبيهات درجة الثقة.
+            الدفع الآمن يصدر لك شهادة اشتراك موقّعة تلقائيًا، وتُفتح لوحة المخطط والتحليل الكاملة فور اكتمال العملية.
           </p>
           <div className="mt-4 flex justify-center">
             <Link
@@ -113,15 +126,37 @@ function PaymentPage() {
           </div>
         </header>
 
+        {active && cert && <ActiveCert cert={cert} />}
+
+        {ready === false && (
+          <div className="surface-panel border-warning p-4 text-center text-sm text-warning">
+            بوابة الدفع غير مُفعّلة بعد — أضف مفتاح الدفع السري ليعمل الاشتراك مباشرة.
+          </div>
+        )}
+
+        <div className="mx-auto max-w-md">
+          <label className="block text-xs">
+            <span className="text-muted-foreground">البريد الإلكتروني (لإصدار الشهادة باسمك)</span>
+            <input
+              dir="ltr"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="mt-1 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
+            />
+          </label>
+        </div>
+
         <div className="grid gap-6 md:grid-cols-3">
           {PLANS.map((p) => {
-            const active = selected === p.id;
+            const activePlan = selected === p.id;
             return (
               <div
                 key={p.id}
                 onClick={() => setSelected(p.id)}
                 className={`surface-panel relative cursor-pointer p-6 transition ${
-                  active ? "glow-gold border-primary/60" : "hover:border-primary/30"
+                  activePlan ? "glow-gold border-primary/60" : "hover:border-primary/30"
                 }`}
               >
                 {p.tag && (
@@ -131,7 +166,7 @@ function PaymentPage() {
                 )}
                 <div className="flex items-center gap-2 text-primary">
                   {p.icon}
-                  <h2 className="text-base font-bold text-foreground">{p.name}</h2>
+                  <h2 className="text-base font-bold text-foreground">{PLAN_LABEL[p.id]}</h2>
                 </div>
                 <div className="mt-4 flex items-end gap-1">
                   <span className="text-4xl font-extrabold text-foreground">${p.price}</span>
@@ -146,59 +181,24 @@ function PaymentPage() {
                   ))}
                 </ul>
                 <button
+                  disabled={busy !== null}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelected(p.id);
-                    go(p);
+                    void go(p);
                   }}
-                  className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold transition ${
-                    active
+                  className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold transition disabled:opacity-60 ${
+                    activePlan
                       ? "bg-primary text-primary-foreground hover:opacity-90"
                       : "border border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
                   }`}
                 >
-                  <CreditCard size={16} /> اشترك الآن
+                  {busy === p.id ? <LoaderCircle size={16} className="animate-spin" /> : <CreditCard size={16} />}
+                  ادفع واحصل على الشهادة
                 </button>
               </div>
             );
           })}
         </div>
-
-        <section className="surface-panel p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-muted-foreground">
-              <Link2 size={16} /> روابط الدفع الخارجية
-            </h2>
-            <button
-              onClick={() => setEditLinks((v) => !v)}
-              className="rounded-lg border border-border bg-secondary px-3 py-1.5 text-xs font-bold text-foreground transition hover:text-primary"
-            >
-              {editLinks ? "إخفاء" : "تعديل الروابط"}
-            </button>
-          </div>
-          <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            الصق رابط الدفع الجاهز لكل باقة (Stripe Payment Link أو PayPal أو أي بوابة). لا تضع مفتاح API هنا أبدًا —
-            المفاتيح السرية تُحفظ في الخادم فقط.
-          </p>
-          {editLinks && loaded && (
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              {PLANS.map((p) => (
-                <label key={p.id} className="block text-xs">
-                  <span className="text-muted-foreground">
-                    {p.name} — ${p.price}
-                  </span>
-                  <input
-                    dir="ltr"
-                    value={settings.payLinks[p.id] ?? ""}
-                    onChange={(e) => update({ payLinks: { ...settings.payLinks, [p.id]: e.target.value } })}
-                    placeholder="https://buy.stripe.com/..."
-                    className="mt-1 w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
-                  />
-                </label>
-              ))}
-            </div>
-          )}
-        </section>
 
         <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
@@ -206,6 +206,22 @@ function PaymentPage() {
           </span>
           <span>• لا نخزّن بيانات البطاقات</span>
           <span>• التحليل لأغراض تعليمية ولا يُعد نصيحة استثمارية</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActiveCert({ cert }: { cert: Certificate }) {
+  return (
+    <div className="surface-panel glow-gold p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-success">
+          <BadgeCheck size={20} />
+          <b className="text-foreground">اشتراكك مفعّل — {PLAN_LABEL[cert.plan]}</b>
+        </div>
+        <div className="text-xs text-muted-foreground">
+          شهادة {cert.ref} • صالحة حتى {new Date(cert.expiresAt).toLocaleDateString("ar-EG")}
         </div>
       </div>
     </div>

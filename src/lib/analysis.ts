@@ -760,3 +760,116 @@ export function positionSize(balance: number, riskPct: number, entry: number, st
   const units = perUnit > 0 ? riskAmount / perUnit : 0; // أونصات
   return { riskAmount, perUnit, units, lots: units / 100 };
 }
+
+/* ---------- مقارنة إشارات المحرك بحركة السعر الحقيقية ---------- */
+
+export type MarketCompare = {
+  bars: number;
+  from: number;
+  to: number;
+  trades: number;
+  wins: number;
+  losses: number;
+  winRate: number;
+  netR: number;
+  avgR: number;
+  engineReturnPct: number;
+  directionHitRate: number;
+  buyHoldPct: number;
+  marketMovePct: number;
+  edgePct: number;
+  maxDrawdownR: number;
+};
+
+/**
+ * تقارن إشارات المحرك على آخر N شمعة بالنتيجة الفعلية لحركة سعر XAU/USD
+ * (تنفيذ حقيقي: وقف خسارة/هدف على شموع فعلية) مقابل شراء وتثبيت.
+ */
+export function compareToMarket(c: Candle[], lookback = 400): MarketCompare {
+  const n = c.length;
+  const startI = Math.max(60, n - lookback);
+  const close = c.map((x) => x.c);
+  const e20 = ema(close, 20);
+  const e50 = ema(close, 50);
+  const r = rsi(close, 14);
+  const m = macd(close);
+  const dir = directional(c, 14);
+  const a = atr(c, 14);
+
+  let wins = 0;
+  let losses = 0;
+  let rSum = 0;
+  let dirHits = 0;
+  let pnlPct = 0;
+  let equity = 0;
+  let peak = 0;
+  let maxDD = 0;
+
+  for (let i = startI; i < n - 12; i++) {
+    const av = a[i];
+    const ad = dir.adx[i];
+    if (av == null || !av || ad == null || ad < 20) continue;
+    const up = (e20[i] ?? 0) > (e50[i] ?? 0) && (m.hist[i] ?? 0) > 0 && (r[i] ?? 50) > 50;
+    const dn = (e20[i] ?? 0) < (e50[i] ?? 0) && (m.hist[i] ?? 0) < 0 && (r[i] ?? 50) < 50;
+    if (!up && !dn) continue;
+
+    const entry = close[i]!;
+    const risk = av * 1.2;
+    const stop = up ? entry - risk : entry + risk;
+    const target = up ? entry + av * 2 : entry - av * 2;
+    const lastIdx = Math.min(n - 1, i + 12);
+
+    // الاتجاه الحقيقي بعد الأفق الزمني
+    const after = close[lastIdx]!;
+    if ((up && after > entry) || (dn && after < entry)) dirHits++;
+
+    let exit = after;
+    for (let j = i + 1; j <= lastIdx; j++) {
+      const hitStop = up ? c[j]!.l <= stop : c[j]!.h >= stop;
+      const hitTgt = up ? c[j]!.h >= target : c[j]!.l <= target;
+      if (hitStop) {
+        exit = stop;
+        break;
+      }
+      if (hitTgt) {
+        exit = target;
+        break;
+      }
+    }
+    const gain = up ? exit - entry : entry - exit;
+    const rMul = gain / risk;
+    rSum += rMul;
+    pnlPct += (gain / entry) * 100;
+    if (rMul > 0) wins++;
+    else losses++;
+
+    equity += rMul;
+    peak = Math.max(peak, equity);
+    maxDD = Math.max(maxDD, peak - equity);
+
+    i += 3;
+  }
+
+  const trades = wins + losses;
+  const first = close[startI]!;
+  const last = close[n - 1]!;
+  const buyHoldPct = ((last - first) / first) * 100;
+
+  return {
+    bars: n - startI,
+    from: c[startI]!.t,
+    to: c[n - 1]!.t,
+    trades,
+    wins,
+    losses,
+    winRate: trades ? (wins / trades) * 100 : 0,
+    netR: rSum,
+    avgR: trades ? rSum / trades : 0,
+    engineReturnPct: pnlPct,
+    directionHitRate: trades ? (dirHits / trades) * 100 : 0,
+    buyHoldPct,
+    marketMovePct: Math.abs(buyHoldPct),
+    edgePct: pnlPct - buyHoldPct,
+    maxDrawdownR: maxDD,
+  };
+}
