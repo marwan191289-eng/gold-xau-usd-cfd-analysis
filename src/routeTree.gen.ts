@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as PaymentRouteImport } from './routes/payment'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as PaymentSuccessRouteImport } from './routes/payment_.success'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +29,44 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PaymentSuccessRoute = PaymentSuccessRouteImport.update({
+  id: '/payment_/success',
+  path: '/payment/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/payment': typeof PaymentRoute
   '/settings': typeof SettingsRoute
+  '/payment/success': typeof PaymentSuccessRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/payment': typeof PaymentRoute
   '/settings': typeof SettingsRoute
+  '/payment/success': typeof PaymentSuccessRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/payment': typeof PaymentRoute
   '/settings': typeof SettingsRoute
+  '/payment_/success': typeof PaymentSuccessRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/payment' | '/settings'
+  fullPaths: '/' | '/payment' | '/settings' | '/payment/success'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/payment' | '/settings'
-  id: '__root__' | '/' | '/payment' | '/settings'
+  to: '/' | '/payment' | '/settings' | '/payment/success'
+  id: '__root__' | '/' | '/payment' | '/settings' | '/payment_/success'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PaymentRoute: typeof PaymentRoute
   SettingsRoute: typeof SettingsRoute
+  PaymentSuccessRoute: typeof PaymentSuccessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +92,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/payment_/success': {
+      id: '/payment_/success'
+      path: '/payment/success'
+      fullPath: '/payment/success'
+      preLoaderRoute: typeof PaymentSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +106,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PaymentRoute: PaymentRoute,
   SettingsRoute: SettingsRoute,
+  PaymentSuccessRoute: PaymentSuccessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
